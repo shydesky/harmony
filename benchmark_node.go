@@ -18,9 +18,11 @@ const (
 	StopCharacter = "\r\n\r\n"
 )
 
+var dddd string
+
 // Start a server and process the request by a handler.
 func startServer(port int, handler func(net.Conn)) {
-	listen, err := net.Listen("tcp4", ":"+strconv.Itoa(port))
+	listen, err := net.Listen("tcp4", ":" + strconv.Itoa(port))
 	defer listen.Close()
 	if err != nil {
 		log.Fatalf("Socket listen port %d failed,%s", port, err)
@@ -28,12 +30,12 @@ func startServer(port int, handler func(net.Conn)) {
 	}
 	log.Printf("Begin listen port: %d", port)
 	for {
-		conn, err := listen.Accept()
+		conn, err := listen.Accept() //监听端口，阻塞
 		if err != nil {
 			log.Fatalln(err)
 			continue
 		}
-		go handler(conn)
+		go handler(conn) //收到客户端连接请求，启动goroutine进行处理。
 	}
 }
 
@@ -49,7 +51,7 @@ func leaderHandler(conn net.Conn) {
 	receivedMessage := ""
 ILOOP:
 	for {
-		n, err := r.Read(buf)
+		n, err := r.Read(buf)  //等待数据读取
 		data := string(buf[:n])
 
 		receivedMessage += data
@@ -58,7 +60,7 @@ ILOOP:
 		case io.EOF:
 			break ILOOP
 		case nil:
-			log.Println("Receive:", data)
+			log.Println("Leader Receive:", data) //打印读取的数据
 			if isTransportOver(data) {
 				break ILOOP
 			}
@@ -72,16 +74,16 @@ ILOOP:
 	ports := convertIntoInts(receivedMessage)
 	ch := make(chan int)
 	for i, port := range ports {
-		go Send(port, strconv.Itoa(i), ch)
+		go Send(port, strconv.Itoa(i), ch) //向多个客户端发送数据，使用chan收集客户端的响应数据。
 	}
 	count := 0
-	for count < len(ports) {
-		fmt.Println(<-ch)
+	for count < len(ports) { //等待所有响应数据并回显
+		fmt.Printf("Slave %d has response the Ping message.\n", <-ch)
 		count++
 	}
 	w.Write([]byte(Message))
 	w.Flush()
-	log.Printf("Send: %s", Message)
+	log.Printf("Leader Send: %d %s message.", count, Message)
 }
 
 // Helper library to convert '1,2,3,4' into []int{1,2,3,4}.
@@ -117,7 +119,7 @@ func SocketClient(ip, message string, port int) (res string) {
 
 	conn.Write([]byte(message))
 	conn.Write([]byte(StopCharacter))
-	log.Printf("Send: %s", Message)
+	log.Printf("Client Send: %s", Message)
 
 	buff := make([]byte, 1024)
 	n, _ := conn.Read(buff)
@@ -130,7 +132,7 @@ func Send(port int, message string, ch chan int) (returnMessage string) {
 	ip := "127.0.0.1"
 	returnMessage = SocketClient(ip, message, port)
 	ch <- port
-	fmt.Println(returnMessage)
+	fmt.Printf("Client response message: \"%s\"\n", returnMessage)
 	return
 }
 
@@ -146,14 +148,14 @@ func slaveHandler(conn net.Conn) {
 ILOOP:
 	for {
 		n, err := r.Read(buf)
-		data := string(buf[:n])
+		dddd = string(buf[:n])
 
 		switch err {
 		case io.EOF:
 			break ILOOP
 		case nil:
-			log.Println("Receive:", data)
-			if isTransportOver(data) {
+			log.Println("Slave Receive:", dddd)
+			if isTransportOver(dddd) {
 				break ILOOP
 			}
 		default:
@@ -161,9 +163,10 @@ ILOOP:
 			return
 		}
 	}
-	w.Write([]byte(Message))
+	res := fmt.Sprintf("I have received the message:[%s]", strings.TrimSpace(dddd))
+	w.Write([]byte(res))
 	w.Flush()
-	log.Printf("Send: %s", Message)
+	//log.Printf("Slave Send: %s", Message)
 }
 
 func isTransportOver(data string) (over bool) {
